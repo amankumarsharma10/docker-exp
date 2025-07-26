@@ -1,0 +1,44 @@
+# ✅ This is the Deployment definition — manages Pods with matching labels
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: springboot-app # Name of the Deployment (not the Pod)
+spec:
+  replicas: 1 # Run only 1 instance of the Pod
+  selector:
+    matchLabels:
+      app: springboot-app-pod # 🎯 This must match the Pod label below — tells Deployment which Pods to manage
+  template:
+    metadata:
+      labels:
+        app: springboot-app-pod # 📦 This is the label that gets applied to the Pod created by this Deployment
+    spec:
+      containers:
+        - name: springboot-app # Name of the container inside the Pod
+          image: springboot-exp-app-k8s:latest # Docker image (local image for Minikube)
+          imagePullPolicy: Never # Don't pull from Docker Hub — used when image is built locally
+          ports:
+            - containerPort: 8080 # Port your app listens on inside the container
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:mysql://mysql-db:3306/mydb
+            - name: SPRING_DATASOURCE_USERNAME
+              value: user
+            - name: SPRING_DATASOURCE_PASSWORD
+              value: user
+
+---
+
+# ✅ This is the Service — it exposes the Spring Boot app and forwards traffic to the correct Pod
+apiVersion: v1
+kind: Service
+metadata:
+  name: springboot-service-svc # Name of the Service (used by kubectl, not for routing)
+spec:
+  selector:
+    app: springboot-app-pod # 🎯 This selector matches Pods with this label — it must match the Pod label above
+    #    This connects the Service to the right Pod
+  ports:
+    - port: 80              # Port exposed by the Service (external port)
+      targetPort: 8080      # Port the container is actually listening on
+  type: NodePort            # Exposes the app on a Node port (Minikube-friendly for local access)

@@ -1,0 +1,91 @@
+# 🗂️ Define a Persistent Volume Claim (PVC) for MySQL — dynamic provisioning by cluster (via default StorageClass)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim # 📦 Name of the PVC — used in Deployment to mount volumes
+  labels:
+    app: mysql
+    tier: database
+spec:
+  accessModes:
+    - ReadWriteOnce  # 📝 Only one node can mount this volume as read-write at a time
+  resources:
+    requests:
+      storage: 1Gi   # 💾 Request 1Gi of dynamic storage from the default storage class
+---
+# ⚙️ Define a Deployment to manage MySQL Pod
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql # 👷 Name of the deployment
+  labels:
+    app: mysql
+    tier: database
+spec:
+  selector:
+    matchLabels:
+      app: mysql       # ✅ MUST match the Pod template labels below
+      tier: database
+  strategy:
+    type: Recreate     # 🔁 Recreate Pod when changes happen (safer for DB containers)
+  template:
+    metadata:
+      labels:
+        app: mysql     # ✅ Labels applied to the Pod created by this deployment
+        tier: database #    Must match the Service's selector to connect
+    spec:
+      containers:
+        - image: mysql:8.4  # 🐬 MySQL image pulled from DockerHub
+          name: mysql       # Name of the container inside the Pod
+          env:              # 🔐 Environment variables passed into the container
+            - name: MYSQL_ROOT_PASSWORD
+              value: root   # 🔐 Root password for MySQL
+
+            # Optional: use secret for secure password handling
+            #            valueFrom:
+            #              secretKeyRef:
+            #                name: mysql-secrets
+            #                key: password
+
+            - name: MYSQL_DATABASE
+              value: mydb  # 📂 Default database to create (used in Spring Boot config)
+            - name: MYSQL_USER
+              value: user
+            - name: MYSQL_PASSWORD
+              value: user
+
+          # Optional: use ConfigMap to externalize DB values
+          #            valueFrom:
+          #              configMapKeyRef:
+          #                name: db-config
+          #                key: dbName
+
+          ports:
+            - containerPort: 3306 # 📡 MySQL default port exposed by the container
+              name: mysql
+
+          volumeMounts:          # 🔄 Mount volume inside the container
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql # 💾 MySQL stores data here by default
+
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pv-claim  # 🔗 Link the volume to our PVC defined above
+---
+# 🌐 Define a Service to expose MySQL to other services (like Spring Boot app)
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-db  # 📛 This becomes the DNS name for other services (e.g., springboot-app talks to mysql-db)
+  labels:
+    app: mysql
+    tier: database
+spec:
+  ports:
+    - port: 3306        # 🎯 Exposes MySQL port at 3306
+      targetPort: 3306  #    Maps to the container's port 3306
+  selector:
+    app: mysql          # 🎯 Targets Pods with these labels (must match Deployment)
+    tier: database
+  clusterIP: None       # 📡 Headless service (DNS lookup returns Pod IPs directly, useful for StatefulSets or simple access)
